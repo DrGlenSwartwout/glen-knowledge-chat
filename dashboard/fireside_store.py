@@ -6,8 +6,6 @@ init_table() on first use (mirrors dashboard/journal_store.py). No Flask import;
 the caller holds the DB lock around writes.
 """
 import json
-import sqlite3
-
 from dashboard import dbwrite
 
 _JSON_COLS = ("transcript", "ash_coverage", "signals")
@@ -39,8 +37,19 @@ def init_table(cx) -> None:
     cx.commit()
 
 
-def _decode(row: sqlite3.Row) -> dict:
-    d = dict(row)
+def _row_dict(cursor, row) -> dict:
+    """Return a mapping for either sqlite tuple rows or Postgres HybridRows."""
+    if hasattr(row, "keys"):
+        return {key: row[key] for key in row.keys()}
+    columns = [
+        description.name if hasattr(description, "name") else description[0]
+        for description in (cursor.description or ())
+    ]
+    return dict(zip(columns, row))
+
+
+def _decode(cursor, row) -> dict:
+    d = _row_dict(cursor, row)
     for c in _JSON_COLS:
         v = d.get(c)
         if isinstance(v, str):
@@ -53,67 +62,54 @@ def _decode(row: sqlite3.Row) -> dict:
 
 def get(cx, fireside_id: int) -> dict | None:
     init_table(cx)
-    _saved_rf = cx.row_factory
-    cx.row_factory = sqlite3.Row
-    try:
-        row = cx.execute(
-            "SELECT * FROM fireside_sessions WHERE id = ?", (int(fireside_id),)
-        ).fetchone()
-        return _decode(row) if row is not None else None
-    finally:
-        cx.row_factory = _saved_rf
+    cursor = cx.execute(
+        "SELECT * FROM fireside_sessions WHERE id = ?", (int(fireside_id),)
+    )
+    row = cursor.fetchone()
+    return _decode(cursor, row) if row is not None else None
 
 
 def get_or_create(cx, amg_session: str) -> dict:
     init_table(cx)
-    _saved_rf = cx.row_factory
-    cx.row_factory = sqlite3.Row
-    try:
-        row = cx.execute(
-            "SELECT * FROM fireside_sessions "
-            "WHERE amg_session = ? AND ended_at IS NULL "
-            "ORDER BY id DESC LIMIT 1",
-            (amg_session or "",),
-        ).fetchone()
-        if row is not None:
-            return _decode(row)
-        new_id = dbwrite.insert_returning_id(cx,
-            f"INSERT INTO fireside_sessions (amg_session, last_turn_at) "
-            f"VALUES (?, {_NOW})",
-            (amg_session or "",),
-        )
-        cx.commit()
-        return get(cx, new_id)
-    finally:
-        cx.row_factory = _saved_rf
+    cursor = cx.execute(
+        "SELECT * FROM fireside_sessions "
+        "WHERE amg_session = ? AND ended_at IS NULL "
+        "ORDER BY id DESC LIMIT 1",
+        (amg_session or "",),
+    )
+    row = cursor.fetchone()
+    if row is not None:
+        return _decode(cursor, row)
+    new_id = dbwrite.insert_returning_id(cx,
+        f"INSERT INTO fireside_sessions (amg_session, last_turn_at) "
+        f"VALUES (?, {_NOW})",
+        (amg_session or "",),
+    )
+    cx.commit()
+    return get(cx, new_id)
 
 
 def append_turn(cx, fireside_id: int, speaker: str, text: str) -> None:
     init_table(cx)
-    _saved_rf = cx.row_factory
-    cx.row_factory = sqlite3.Row
+    row = cx.execute(
+        "SELECT transcript FROM fireside_sessions WHERE id = ?", (int(fireside_id),)
+    ).fetchone()
+    if row is None:
+        return
     try:
-        row = cx.execute(
-            "SELECT transcript FROM fireside_sessions WHERE id = ?", (int(fireside_id),)
-        ).fetchone()
-        if row is None:
-            return
-        try:
-            transcript = json.loads(row["transcript"]) or []
-        except (ValueError, TypeError):
-            transcript = []
-        ts = cx.execute(f"SELECT {_NOW}").fetchone()[0]
-        transcript.append({"speaker": speaker, "text": text or "", "ts": ts})
-        inc = 1 if speaker == "traveler" else 0
-        cx.execute(
-            "UPDATE fireside_sessions "
-            "SET transcript = ?, last_turn_at = ?, turn_count = turn_count + ? "
-            "WHERE id = ?",
-            (json.dumps(transcript), ts, inc, int(fireside_id)),
-        )
-        cx.commit()
-    finally:
-        cx.row_factory = _saved_rf
+        transcript = json.loads(row[0]) or []
+    except (ValueError, TypeError):
+        transcript = []
+    ts = cx.execute(f"SELECT {_NOW}").fetchone()[0]
+    transcript.append({"speaker": speaker, "text": text or "", "ts": ts})
+    inc = 1 if speaker == "traveler" else 0
+    cx.execute(
+        "UPDATE fireside_sessions "
+        "SET transcript = ?, last_turn_at = ?, turn_count = turn_count + ? "
+        "WHERE id = ?",
+        (json.dumps(transcript), ts, inc, int(fireside_id)),
+    )
+    cx.commit()
 
 
 def update_coverage(cx, fireside_id: int, coverage: dict) -> None:

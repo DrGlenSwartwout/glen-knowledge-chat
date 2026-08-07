@@ -1,11 +1,48 @@
 import sqlite3
 import pytest
 from dashboard import fireside_store as fs
+from dashboard.pgcompat import HybridRow
 
 
 def _cx(tmp_path):
     cx = sqlite3.connect(str(tmp_path / "chat_log.db"))
     return cx
+
+
+class _PgLikeCursor:
+    """SQLite-backed cursor with the row contract used by dashboard.db._PgCursor."""
+
+    def __init__(self, cursor):
+        self._cursor = cursor
+
+    @property
+    def description(self):
+        return self._cursor.description
+
+    @property
+    def lastrowid(self):
+        return self._cursor.lastrowid
+
+    def fetchone(self):
+        row = self._cursor.fetchone()
+        if row is None:
+            return None
+        return HybridRow([item[0] for item in self.description], row)
+
+
+class _PgLikeConnection:
+    """Connection deliberately lacking SQLite's ``row_factory`` attribute."""
+
+    backend = "postgres"
+
+    def __init__(self, path):
+        self._connection = sqlite3.connect(str(path))
+
+    def execute(self, sql, params=()):
+        return _PgLikeCursor(self._connection.execute(sql, params))
+
+    def commit(self):
+        self._connection.commit()
 
 
 def test_get_or_create_creates_then_reuses(tmp_path):
@@ -64,3 +101,18 @@ def test_get_missing_returns_none(tmp_path):
     cx = _cx(tmp_path)
     fs.init_table(cx)
     assert fs.get(cx, 999) is None
+
+
+def test_store_supports_postgres_style_connection_without_row_factory(tmp_path):
+    cx = _PgLikeConnection(tmp_path / "postgres-like.db")
+    session = fs.get_or_create(cx, "pg-session")
+    fs.append_turn(cx, session["id"], "traveler", "I need help.")
+    fs.append_turn(cx, session["id"], "glendalf", "I hear you.")
+
+    got = fs.get_or_create(cx, "pg-session")
+    assert got["id"] == session["id"]
+    assert got["turn_count"] == 1
+    assert [turn["text"] for turn in got["transcript"]] == [
+        "I need help.",
+        "I hear you.",
+    ]
